@@ -1,6 +1,6 @@
 import os
 import asyncio
-import psycopg2
+import pg8000.native as pg
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
