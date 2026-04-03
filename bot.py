@@ -1,9 +1,12 @@
 import os
 import asyncio
+import threading
 import pg8000.native as pg
+import urllib.parse
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ─── CONFIGURACIÓN ────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -13,7 +16,7 @@ DATABASE_URL   = os.environ.get("DATABASE_URL")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ─── ESQUEMA DE LA BASE (para que Gemini sepa qué hay) ────────────
+# ─── ESQUEMA DE LA BASE ───────────────────────────────────────────
 SCHEMA = """
 Tabla: proyectos
 Columnas:
@@ -65,8 +68,7 @@ Generá SOLO la consulta SQL para responderla.
     return response.text.strip()
 
 # ─── FUNCIÓN: ejecutar SQL en Neon ────────────────────────────────
-def ejecutar_sql(sql: str) -> list:
-    import urllib.parse
+def ejecutar_sql(sql: str):
     r = urllib.parse.urlparse(DATABASE_URL)
     conn = pg.Connection(
         user=r.username,
@@ -84,10 +86,7 @@ def ejecutar_sql(sql: str) -> list:
 def formatear_respuesta(pregunta: str, columnas: list, filas: list) -> str:
     if not filas:
         return "No encontré proyectos que coincidan con tu consulta."
-    
-    # Armar texto con los resultados
     datos = "\n".join([str(dict(zip(columnas, fila))) for fila in filas[:10]])
-    
     prompt = f"""El usuario preguntó: "{pregunta}"
 
 Los resultados de la base de datos son:
@@ -96,7 +95,6 @@ Los resultados de la base de datos son:
 Respondé en español de forma clara y concisa, como si fueras un asistente.
 Si hay muchos resultados, hacé un resumen. Máximo 10 items en listas.
 No menciones SQL ni bases de datos."""
-
     response = model.generate_content(prompt)
     return response.text.strip()
 
@@ -115,35 +113,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pregunta = update.message.text
     await update.message.reply_text("🔍 Consultando la base de datos...")
-    
     try:
-        # 1. Generar SQL
         sql = generar_sql(pregunta)
-        
         if sql == "NO_SQL":
             await update.message.reply_text(
                 "Esa pregunta no parece estar relacionada con los proyectos. "
                 "Preguntame sobre proyectos de ArgenINTA 🌱"
             )
             return
-        
-        # 2. Ejecutar SQL
         columnas, filas = ejecutar_sql(sql)
-        
-        # 3. Formatear respuesta
         respuesta = formatear_respuesta(pregunta, columnas, filas)
         await update.message.reply_text(respuesta)
-        
     except Exception as e:
-        await update.message.reply_text(
-            f"Ocurrió un error al procesar tu consulta. Intentá reformular la pregunta."
-        )
+        await update.message.reply_text("Ocurrió un error. Intentá reformular la pregunta.")
         print(f"Error: {e}")
 
-# ─── MAIN ─────────────────────────────────────────────────────────
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
+# ─── HTTP SERVER para Render ──────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -152,18 +137,22 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-def run_bot():
+# ─── MAIN ─────────────────────────────────────────────────────────
+async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Bot iniciado...")
-    app.run_polling()
 
-def main():
-    t = threading.Thread(target=run_bot)
+    server = HTTPServer(("0.0.0.0", 10000), Handler)
+    t = threading.Thread(target=server.serve_forever)
     t.daemon = True
     t.start()
-    HTTPServer(("0.0.0.0", 10000), Handler).serve_forever()
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
