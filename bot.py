@@ -29,7 +29,7 @@ Columnas:
 - organismo_aportante (TEXT): FAO, BID, FONTAGRO, PROCISUR, etc.
 - pais_origen (TEXT): país del organismo aportante
 - fecha_firma (DATE): fecha de firma del acuerdo
-- año_firma (INTEGER): año de firma
+- anio_firma (INTEGER): año de firma
 - fecha_inicio (DATE)
 - fecha_fin (DATE)
 - plazo_meses (INTEGER)
