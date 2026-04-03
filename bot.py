@@ -136,7 +136,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(respuesta)
     except Exception as e:
         await update.message.reply_text("Ocurrió un error. Intentá reformular la pregunta.")
+        import traceback
         print(f"Error: {e}")
+        traceback.print_exc()
 
 # ─── HTTP SERVER para Render ──────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
