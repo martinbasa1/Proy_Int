@@ -152,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
 # ─── MAIN ─────────────────────────────────────────────────────────
 async def main():
     limpiar_webhook()
-    await asyncio.sleep(2)
+    await asyncio.sleep(10)
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
