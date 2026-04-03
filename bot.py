@@ -1,8 +1,9 @@
 import os
 import asyncio
 import threading
-import pg8000.native as pg
 import urllib.parse
+import urllib.request
+import pg8000.native as pg
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
@@ -48,6 +49,15 @@ Columnas:
 - area_tematica (TEXT)
 - comentarios (TEXT)
 """
+
+# ─── LIMPIAR CONEXIONES VIEJAS DE TELEGRAM ───────────────────────
+def limpiar_webhook():
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true"
+        urllib.request.urlopen(url)
+        print("Webhook limpiado.")
+    except Exception as e:
+        print(f"Error limpiando webhook: {e}")
 
 # ─── FUNCIÓN: pregunta → SQL via Gemini ───────────────────────────
 def generar_sql(pregunta: str) -> str:
@@ -139,6 +149,9 @@ class Handler(BaseHTTPRequestHandler):
 
 # ─── MAIN ─────────────────────────────────────────────────────────
 async def main():
+    limpiar_webhook()
+    await asyncio.sleep(2)
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
