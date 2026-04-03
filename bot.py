@@ -1,18 +1,19 @@
 import os
 import asyncio
-import threading
 import urllib.parse
 import urllib.request
 import pg8000.native as pg
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram.ext import Application
+from aiohttp import web
 
 # ─── CONFIGURACIÓN ────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 DATABASE_URL   = os.environ.get("DATABASE_URL")
+RENDER_URL     = os.environ.get("RENDER_URL")  # ej: https://proy-int.onrender.com
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
@@ -49,15 +50,6 @@ Columnas:
 - area_tematica (TEXT)
 - comentarios (TEXT)
 """
-
-# ─── LIMPIAR CONEXIONES VIEJAS DE TELEGRAM ───────────────────────
-def limpiar_webhook():
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true"
-        urllib.request.urlopen(url)
-        print("Webhook limpiado.")
-    except Exception as e:
-        print(f"Error limpiando webhook: {e}")
 
 # ─── FUNCIÓN: pregunta → SQL via Gemini ───────────────────────────
 def generar_sql(pregunta: str) -> str:
@@ -137,37 +129,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text("Ocurrió un error. Intentá reformular la pregunta.")
         import traceback
-        print(f"Error: {e}")
         traceback.print_exc()
 
-# ─── HTTP SERVER para Render ──────────────────────────────────────
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        pass
-
-# ─── MAIN ─────────────────────────────────────────────────────────
+# ─── MAIN CON WEBHOOK ─────────────────────────────────────────────
 async def main():
-    limpiar_webhook()
-    await asyncio.sleep(10)
-
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Bot iniciado...")
 
-    server = HTTPServer(("0.0.0.0", 10000), Handler)
-    t = threading.Thread(target=server.serve_forever)
-    t.daemon = True
-    t.start()
+    webhook_url = f"{RENDER_URL}/webhook/{TELEGRAM_TOKEN}"
+    print(f"Iniciando con webhook: {webhook_url}")
 
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await asyncio.Event().wait()
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=10000,
+        url_path=f"/webhook/{TELEGRAM_TOKEN}",
+        webhook_url=webhook_url,
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
