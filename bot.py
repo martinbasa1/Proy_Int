@@ -66,14 +66,19 @@ Generá SOLO la consulta SQL para responderla.
 
 # ─── FUNCIÓN: ejecutar SQL en Neon ────────────────────────────────
 def ejecutar_sql(sql: str) -> list:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(sql)
-    columnas = [desc[0] for desc in cur.description]
-    filas = cur.fetchall()
-    cur.close()
+    import urllib.parse
+    r = urllib.parse.urlparse(DATABASE_URL)
+    conn = pg.Connection(
+        user=r.username,
+        password=r.password,
+        host=r.hostname,
+        database=r.path[1:],
+        ssl_context=True
+    )
+    result = conn.run(sql)
+    columnas = [col["name"] for col in conn.columns]
     conn.close()
-    return columnas, filas
+    return columnas, result
 
 # ─── FUNCIÓN: resultado → respuesta natural via Gemini ────────────
 def formatear_respuesta(pregunta: str, columnas: list, filas: list) -> str:
