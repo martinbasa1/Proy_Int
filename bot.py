@@ -141,12 +141,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error: {e}")
 
 # ─── MAIN ─────────────────────────────────────────────────────────
-def main():
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass
+
+def run_bot():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Bot iniciado...")
     app.run_polling()
+
+def main():
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
+    t.start()
+    HTTPServer(("0.0.0.0", 10000), Handler).serve_forever()
 
 if __name__ == "__main__":
     main()
