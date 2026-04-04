@@ -1,19 +1,17 @@
 import os
 import asyncio
 import urllib.parse
-import urllib.request
 import pg8000.native as pg
 import google.generativeai as genai
+from aiohttp import web
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from telegram.ext import Application
-from aiohttp import web
 
 # ─── CONFIGURACIÓN ────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 DATABASE_URL   = os.environ.get("DATABASE_URL")
-RENDER_URL     = os.environ.get("RENDER_URL")  # ej: https://proy-int.onrender.com
+RENDER_URL     = os.environ.get("RENDER_URL")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
@@ -131,21 +129,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import traceback
         traceback.print_exc()
 
-# ─── MAIN CON WEBHOOK ─────────────────────────────────────────────
+# ─── WEBHOOK HANDLER ──────────────────────────────────────────────
+async def webhook_handler(request):
+    app = request.app["bot_app"]
+    data = await request.json()
+    update = Update.de_json(data, app.bot)
+    await app.process_update(update)
+    return web.Response(text="OK")
+
+# ─── MAIN ─────────────────────────────────────────────────────────
 async def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     webhook_url = f"{RENDER_URL}/webhook/{TELEGRAM_TOKEN}"
-    print(f"Iniciando con webhook: {webhook_url}")
 
-    await app.run_webhook(
-        listen="0.0.0.0",
-        port=10000,
-        url_path=f"/webhook/{TELEGRAM_TOKEN}",
-        webhook_url=webhook_url,
-    )
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.bot.set_webhook(webhook_url)
+    print(f"Webhook configurado: {webhook_url}")
+
+    web_app = web.Application()
+    web_app["bot_app"] = bot_app
+    web_app.router.add_post(f"/webhook/{TELEGRAM_TOKEN}", webhook_handler)
+
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
+    print("Bot iniciado.")
+
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
