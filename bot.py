@@ -14,7 +14,7 @@ DATABASE_URL   = os.environ.get("DATABASE_URL")
 RENDER_URL     = os.environ.get("RENDER_URL")
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 # ─── ESQUEMA DE LA BASE ───────────────────────────────────────────
 SCHEMA = """
